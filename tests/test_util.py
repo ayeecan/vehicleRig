@@ -14,11 +14,16 @@ class utilTest(unittest.TestCase):
         self.nulla     = cmds.group(n = '{0}_a'.format(self.null_name), em = True)
         self.nullb     = cmds.group(n = '{0}_b'.format(self.null_name), em = True)
         
+        self.cube_name = 'test_cube'
+        self.cube      = cmds.polyCube(n = self.cube_name, ch = False)
+        
     def tearDown(self):
         td_list = [
                    self.ctrl_name,
                    self.nulla,
-                   self.nullb
+                   self.nullb,
+                   self.cube_name,
+                   '_tempCluster'
                   ]
         for name in td_list:
             if cmds.objExists(name):
@@ -45,6 +50,16 @@ class utilTest(unittest.TestCase):
         grp_pos = cmds.xform(self.nulla, q = True, t = True)
 
         self.assertEqual(ctrl_pos, grp_pos)
+        
+    def test_snapGeo(self):
+        util.lockCB(self.ctrl, ['tx', 'ty', 'tz'])
+        cmds.move(10, 10, 10, self.cube)
+        util.snapGeo(self.ctrl, self.cube)
+
+        ctrl_pos = cmds.xform(self.ctrl, q = True, t = True)
+        cube_pos = cmds.xform(self.cube, q = True, t = True)
+
+        self.assertEqual(ctrl_pos, cube_pos)
         
     def test_parentCon(self):
         node = util.nameReformat(util.parentCon(self.nulla, self.ctrl_name))

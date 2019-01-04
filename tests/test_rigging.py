@@ -83,7 +83,7 @@ class riggingTest(unittest.TestCase):
         
     def test_reverseNode(self):
         rigging.reverseNode(self.name)
-        selr.assertTrue(cmds.objExists(self.name))
+        self.assertTrue(cmds.objExists(self.name))
         
     def test_displayReference(self):
         rigging.displayReference(self.ctrl_name)
