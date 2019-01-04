@@ -17,13 +17,11 @@ def makeArrow(name = 'arrow'):
                   ]
 
     arrow = cmds.curve(n = name, d = 1, p = arrowPoints)
-    cmds.scale(10, 10, 10, name)
     
     return arrow
     
 def makeCircle(name = 'circle'):
     circle = cmds.circle(n = name, nr = (0,1,0), ch = False)
-    cmds.scale(10, 10, 10, name)
     
     return circle
     

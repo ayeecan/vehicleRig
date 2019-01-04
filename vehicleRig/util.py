@@ -35,6 +35,17 @@ def snap(obj_child, obj_parent):
     with tempUnlockCB(obj_child):
         cmds.matchTransform(obj_child, obj_parent)
 
+def snapGeo(obj_child, list_of_geo):
+    '''Match position of child to a list of geometry'''
+    with tempUnlockCB(obj_child):
+        with tempSelect(list_of_geo):
+            cls_name = '_tempCluster'
+            tempCls = cmds.cluster(name = cls_name)[1]
+        
+            cmds.matchTransform(obj_child, tempCls)
+        
+            cmds.delete(tempCls)
+        
 def parentCon(obj_master, obj_slave):
     '''Parent constraint child to parent'''
     with tempUnlockCB(obj_slave):

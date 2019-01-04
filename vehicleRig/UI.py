@@ -13,7 +13,7 @@ class vehicleRigWindow(MayaQWidgetDockableMixin, QtWidgets.QMainWindow):
         super(vehicleRigWindow, self).__init__(parent = parent)
         
         #INFO
-        self.version_number = '1.0.0'
+        self.version_number = '1.1.0'
         self.window_name = 'Vehicle Rigging'
         self.setWindowTitle('{0} {1}'.format(self.window_name, self.version_number))
         
@@ -21,42 +21,11 @@ class vehicleRigWindow(MayaQWidgetDockableMixin, QtWidgets.QMainWindow):
         mainWidget = QtWidgets.QWidget(self)
         self.setCentralWidget(mainWidget)
         
-        #column1 (rig)
-        tempBtn = QtWidgets.QPushButton('Create Guidelines', self)
-        tempBtn.released.connect(self.createTemp)
-        
-        rigBtn = QtWidgets.QPushButton('Create Rig', self)
-        rigBtn.released.connect(self.createRig)
-        
-        button_lay = QtWidgets.QVBoxLayout()
-        button_lay.addWidget(tempBtn)
-        button_lay.addWidget(rigBtn)
-        button_lay.addStretch()
-        
-        button_gb = QtWidgets.QGroupBox('Rig Creation')
-        button_gb.setLayout(button_lay)
-        
-        #column2 (geometry)
-        addGeoBtn = QtWidgets.QPushButton('Add Geometry', self)
-        addGeoBtn.released.connect(self.addGeo)
-        
-        remGeoBtn = QtWidgets.QPushButton('Remove Geometry', self)
-        remGeoBtn.released.connect(self.remGeo)
-        
-        geoButton_lay = QtWidgets.QHBoxLayout()
-        geoButton_lay.addWidget(addGeoBtn)
-        geoButton_lay.addWidget(remGeoBtn)
-        geoButton_lay.addStretch()
-        
-        self.geoList = QtWidgets.QListWidget(self)
-        self.geoList.setSortingEnabled(True)
-        
-        geo_lay = QtWidgets.QVBoxLayout()
-        geo_lay.addLayout(geoButton_lay)
-        geo_lay.addWidget(self.geoList)
-        
-        geo_gb = QtWidgets.QGroupBox('Geometry')
-        geo_gb.setLayout(geo_lay)
+        #column1 (geometry)
+        self.geoList = wdg.wdg_editableList(self)
+                
+        #column2 (body)
+        self.bodyList = wdg.wdg_editableList(self)
         
         #column3 (wheels)
         addWheelBtn = QtWidgets.QPushButton('Add Wheel', self)
@@ -90,42 +59,80 @@ class vehicleRigWindow(MayaQWidgetDockableMixin, QtWidgets.QMainWindow):
         
         self.wheelGeoList = QtWidgets.QListWidget(self)
         
-        wheel_lay = QtWidgets.QVBoxLayout()
+        wheelWdg = QtWidgets.QWidget(self)
+        wheel_lay = QtWidgets.QVBoxLayout(wheelWdg)
         wheel_lay.addLayout(wheelButton_lay)
         wheel_lay.addWidget(self.wheelList)
         wheel_lay.addLayout(wheelGeoButton_lay)
         wheel_lay.addWidget(self.wheelGeoList)
+                
+        #create rig buttons
+        tempBtn = QtWidgets.QPushButton('Create Guidelines', self)
+        tempBtn.released.connect(self.createTemp)
         
-        wheel_gb = QtWidgets.QGroupBox('Wheels')
-        wheel_gb.setLayout(wheel_lay)
+        rigBtn = QtWidgets.QPushButton('Create Rig', self)
+        rigBtn.released.connect(self.createRig)
+        
+        button_lay = QtWidgets.QHBoxLayout()
+        button_lay.addWidget(tempBtn)
+        button_lay.addWidget(rigBtn)
+        button_lay.addStretch()
+        
+        #tabs
+        tabWdg = QtWidgets.QTabWidget(self)
+        tabWdg.addTab(self.geoList, 'All Geometry')
+        tabWdg.addTab(self.bodyList, 'Body')
+        tabWdg.addTab(wheelWdg, 'Wheels')
         
         #MAIN LAYOUT
-        mainLayout = QtWidgets.QHBoxLayout(mainWidget)
-        mainLayout.addWidget(button_gb)
-        mainLayout.addWidget(geo_gb)
-        mainLayout.addWidget(wheel_gb)
+        mainLayout = QtWidgets.QVBoxLayout(mainWidget)
+        mainLayout.addWidget(tabWdg)
+        mainLayout.addLayout(button_lay)
         
     def createTemp(self):
         '''Create guidelines'''
-        rigging.createTemp()
+        tempPrefix = '_tempRig'
+        if cmds.objExists('{0}_grp'.format(tempPrefix)):
+            cmds.warning('Guidelines already created!')
+            return
+
+        geo_list = self.geoList.itemsInList()
+        body_list = self.bodyList.itemsInList()
+        
+        wheel = self.itemsInList(self.wheelList)[0]
+        wheel_wdg = self.wheelList.findItems(wheel, QtCore.Qt.MatchExactly)[0]
+        wheel_list = wheel_wdg.geo_list
+        
+        if len(geo_list) == 0 or len(body_list) == 0 or len(wheel_list) == 0:
+            cmds.warning('Some lists are empty!')
+            return
+        
+        tempCtrls = rigging.createTemp()
+        rigging.autoPos(tempCtrls, geo_list, body_list, wheel_list)
+        rigging.autoSize(tempCtrls, geo_list, body_list, wheel_list)
         
     def createRig(self):
         '''Create rig'''
         rigging.createRig()
+        
         if cmds.objExists('_tempRig_grp'):
             cmds.delete('_tempRig_grp')
         
         self.rigGeo()
         self.rigWheels()
         
-        self.geoList.clear()
+        self.geoList.clearList()
+        self.bodyList.clearList()
         self.wheelList.clear()
         self.wheelGeoList.clear()
         
     def rigGeo(self):
         '''Put all geometry in the rig'''
-        all_geo = self.itemsInList(self.geoList)
+        all_geo = self.geoList.itemsInList()
         cmds.parent(all_geo, 'geo_grp')
+        
+        all_geo_body = self.bodyList.itemsInList()
+        cmds.parent(all_geo_body, 'body_geo_grp')
         
         cmds.select(clear = True)
         
@@ -150,25 +157,6 @@ class vehicleRigWindow(MayaQWidgetDockableMixin, QtWidgets.QMainWindow):
             util.orientCon('wheel_rotation', wheel_grp)
             
         cmds.select(clear = True)
-        
-    def addGeo(self):
-        '''Add geometry to geoList'''
-        selection = cmds.ls(sl = True)
-        
-        oldList = self.itemsInList(self.geoList)
-        
-        for i in selection:
-            oldList.append(i)
-            
-        newList = list(set(oldList))
-        
-        self.geoList.clear()
-        self.geoList.addItems(newList)
-        
-    def remGeo(self):
-        '''Remove geometry from geoList'''
-        selected_row = self.geoList.currentRow()
-        self.geoList.takeItem(selected_row)
         
     def addWheel(self):
         '''Add wheel to wheelList'''

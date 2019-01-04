@@ -29,12 +29,10 @@ def tempWheelMeasure(prefix = 'temp', name = 'wheel', suffixStart = 'center', su
     measure_name = '{0}_{1}'.format(prefix, name)
     
     centerLoc = cmds.spaceLocator(n = '{0}_{1}'.format(measure_name, suffixStart))
-    cmds.scale(5, 5, 5, centerLoc)
     colourControl(centerLoc, 17)
     
     edgeLoc = cmds.spaceLocator(n = '{0}_{1}'.format(measure_name, suffixEnd))
     cmds.move(0, 5, 0, edgeLoc)
-    cmds.scale(1, 1, 1, edgeLoc)
     util.lockCB(edgeLoc, ['tx','tz','sx','sy','sz'])
     colourControl(edgeLoc, 17)
     
@@ -131,6 +129,27 @@ def createPlacement(matchTo, name = 'placement_ctrl'):
     
     return name
     
+def createBody(matchTo, name = 'body_ctrl'):
+    '''Create body control'''
+    ctrl = shapes.makeCircle(name)
+    cmds.matchTransform(name, matchTo)
+    cmds.makeIdentity(ctrl, apply = True, scale = True)
+    
+    temp_cvs = '{0}.cv[*]'.format(matchTo)
+    with util.tempSelect(temp_cvs):
+        cls_name = '_tempCluster'
+        tempCls = cmds.cluster(name = cls_name)[1]
+        clsX, clsY, clsZ = cmds.xform(tempCls, q = True, rp = True)
+        
+        body_cvs = '{0}.cv[*]'.format(name)
+        cmds.move(clsY, body_cvs, moveY = True, ws = True)
+        
+        cmds.delete(tempCls)
+    
+    util.lockCB(ctrl, ['tx', 'ty', 'tz', 'ry', 'sx', 'sy', 'sz', 'v'])
+    print 'end of createBody', cmds.objExists(tempCls)
+    return name
+    
 def createMove(matchTo, name = 'move_ctrl'):
     '''Create move control'''
     ctrl = shapes.makeArrow(name)
@@ -184,12 +203,69 @@ def createTemp():
     
     grp = null('{0}_grp'.format(tempPrefix))
     plce = tempPlacement(tempPrefix)
+    body = tempPlacement(tempPrefix, name = 'body_ctrl')
     mve = tempMove(tempPrefix)
     centerLoc, edgeLoc = tempWheelMeasure(tempPrefix)
     
-    cmds.parent(plce, mve, centerLoc, grp)
-    
+    util.parentCon(mve, body)
+    cmds.parent(plce, mve, body, centerLoc, grp)
+        
     cmds.select(cl = True)
+    
+    return plce, mve, body, centerLoc, edgeLoc
+    
+def autoSize(ctrls, geo_list, body_list, wheel_list):
+    '''Automatically scale controls to fit geometry'''
+    plce, mve, body, centerLoc, edgeLoc = ctrls
+    
+    plceX, plceY, plceZ = findScaleFactor(plce, geo_list)
+    cmds.scale(plceX, plceZ, plce, scaleXZ = True)
+    
+    mveX, mveY, mveZ = findScaleFactor(mve, body_list)
+    cmds.scale(mveX, mveZ, mve, scaleXZ = True)
+    
+    bodyX, bodyY, bodyZ = findScaleFactor(body, body_list, buffer = -2)
+    cmds.scale(bodyX, bodyZ, body, scaleXZ = True)
+    
+    centerLocX, centerLocY, centerLocZ = findScaleFactor(centerLoc, wheel_list)
+    cmds.scale(centerLocX, centerLocZ, centerLoc, scaleXZ = True)
+    
+def findScaleFactor(ctrl, selection, buffer = 5):
+    '''Find by how much to scale the selected control to fit selection'''
+    sel_bb = cmds.exactWorldBoundingBox(selection)
+    ctrl_bb = cmds.exactWorldBoundingBox(ctrl)
+    
+    factorX_raw = sel_bb[3] / ctrl_bb[3]
+    factorY_raw = sel_bb[4] / ctrl_bb[4]
+    factorZ_raw = sel_bb[5] / ctrl_bb[5]
+    
+    factorX = buffer + factorX_raw
+    factorY = buffer + factorY_raw
+    factorZ = buffer + factorZ_raw
+    
+    return factorX, factorY, factorZ
+    
+def autoPos(ctrls, geo_list, body_list, wheel_list):
+    '''Automatically place controls to fit geometry'''
+    plce, mve, body, centerLoc, edgeLoc = ctrls
+    
+    util.snapGeo(mve, body_list)
+    with util.tempUnlockCB(mve):
+        cmds.move(0, 0, mve, moveXZ = True, ws = True)
+    
+    util.snapGeo(body, body_list)
+    with util.tempUnlockCB(body):
+        cmds.move(0, 0, body, moveXZ = True, ws = True)
+        
+        body_cvs = '{0}.cv[*]'.format(body)
+        with util.tempSelect(body_cvs):
+            body_top = cmds.exactWorldBoundingBox(body_list)[4]
+            buffer = 2
+            cmds.move(buffer + body_top, body_cvs, moveY = True, ws = True)
+        
+    util.snapGeo(centerLoc, wheel_list)
+    wheel_top = cmds.exactWorldBoundingBox(wheel_list)[4]
+    cmds.move(wheel_top, edgeLoc, moveY = True, ws = True)
     
 def createRig():
     '''Build rig'''
@@ -208,12 +284,21 @@ def createRig():
     cmds.parent(mve, plce)
     nullify(mve)
     
+    body = createBody(matchTo = '{0}_body_ctrl'.format(tempPrefix))
+    util.parentWithLocks(body, mve)
+    nullify(body)
+    
     geo_grp = null('geo_grp')
     displayReference(geo_grp)
     toggleReference(plce, geo_grp)
     util.parentWithLocks(geo_grp, master)
     util.parentCon(mve, geo_grp)
     util.scaleCon(plce, geo_grp)
+    
+    body_grp = null('body_geo_grp')
+    util.snap(body_grp, mve)
+    util.parentWithLocks(body_grp, geo_grp)
+    util.orientCon(body, body_grp)
     
     rot_cur = null('wheel_rotation')
     util.unlockCB(rot_cur, ['tx','ty','tz','rx','ry','rz'])
@@ -241,6 +326,6 @@ def createRig():
     util.scaleCon(plce, wheel_rad_grp)
     
     expr = createExpression(rot_cur, 'wheel_expr')
-    
+            
     cmds.select(cl = True)
     
